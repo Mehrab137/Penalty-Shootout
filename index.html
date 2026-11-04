@@ -248,6 +248,20 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--yellow);outline
 
 .post .pk-msg{display:block}.post .pk-msg[hidden]{display:none}
 
+.shotopts{display:flex;flex-direction:column;gap:8px;margin-top:14px}
+.so1{display:flex;flex-direction:column;gap:5px}.so1 label{font:400 8px var(--px);color:var(--muted)}
+.so1 .seg button{flex:1;font-size:8px;padding:9px 6px}.so1 .seg.dis{opacity:.45;pointer-events:none}
+.so1 small{font:600 11px var(--ui);color:var(--muted);line-height:1.3;min-height:2.6em}
+.dot.m{background:#59607f;border-color:#aab2d6;color:#fff}
+.log li i{font-style:normal;color:var(--muted)}
+
+.netb{align-self:center;font:400 8px var(--px);padding:7px 9px;border-radius:8px;border:2px solid var(--line);background:var(--panel)}
+.netb.ok{color:var(--neon);border-color:rgba(57,255,156,.5)}.netb.bad{color:#ff6a78;border-color:#ff4d5e;animation:pulse .8s steps(2) infinite}
+.chk{list-style:none;margin:0 0 12px;padding:0;text-align:left;display:flex;flex-direction:column;gap:6px}
+.chk li{background:#0a1030;border:2px solid var(--line);border-radius:9px;padding:8px 10px;font:700 13px var(--ui)}
+.chk li b{margin-right:6px}.chk li.ok b{color:var(--neon)}.chk li.bad{border-color:#ff4d5e}.chk li.bad b{color:#ff6a78}
+.chk li small{display:block;margin-top:4px;font:600 12px/1.4 var(--ui);color:#ffb3ba}.chk li.run{color:var(--muted)}
+
 </style>
 </head>
 <body>
@@ -255,6 +269,7 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--yellow);outline
  <header class="top">
   <h1 class="logo"><span class="lball">⚽</span><span>PENALTY</span> <em>SHOOTOUT</em></h1>
   <div class="chips">
+   <span class="netb" id="netb" hidden></span>
    <button class="chip" id="bRules">? RULES</button>
    <button class="chip" id="bSnd" aria-pressed="true">🔊 SOUND</button>
    <button class="chip" id="bMenu">☰ MENU</button>
@@ -325,9 +340,11 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--yellow);outline
   <p><b>Coin toss:</b> both sides play rock-paper-scissors. The winner chooses to shoot or keep first.</p>
   <p><b>Shooter</b> picks a zone to aim at and <b>keeper</b> picks a zone to dive to. You have <b>7 seconds</b>; if time runs out your highlighted zone (or a random one) is used. Picks stay hidden until both are in.</p>
   <p><b>Same zone</b> = SAVED. <b>Different zone</b> = GOAL.</p>
+  <p><b>Power:</b> SOFT is slow and never misses, but a keeper diving to a neighbouring zone can sometimes reach it. HARD is fast but can sail wide or hit the woodwork, and sometimes blasts through a correct dive.</p>
+  <p><b>Curve:</b> bends the ball in flight. It looks great but carries a small miss risk, and a curler can swerve away from a correct dive. Top-row shots miss a bit more often.</p>
   <p>Each side takes the chosen number of kicks, alternating. Most goals wins and the match ends early once one side can't be caught. A tie goes to <b>sudden death</b>.</p>
   <p><b>Online:</b> create a room, share the code, and friends pick a side. Up to two per side for 2v2; shooters and keepers rotate within a team.</p>
-  <p><b>Keys:</b> 1–6 pick a zone (local P2: numpad 1–6 or A S D F G H) · arrows move · Enter locks · Space speeds up a kick.</p>
+  <p><b>Keys:</b> 1–6 pick a zone (local P2: numpad 1–6 or A S D F G H) · Q W E power · Z X C curve · arrows move · Enter locks · Space speeds up a kick.</p>
  </div>
  <button class="go" id="rulesClose">GOT IT</button>
 </div></div>
@@ -743,36 +760,71 @@ function burst(kind,x,y){
 }
 
 /* ---------------- simulation ---------------- */
-function pickTargets(shotZ,keepZ,tr){
-  const rs=zoneRect(shotZ),rk=zoneRect(keepZ),mx=.36,my=.2,saved=shotZ===keepZ,col=keepZ%3;
+function pickTargets(shotZ,keepZ,tr,mode){
+  // mode: 'save' keeper reaches the ball, 'near' keeper guessed right but the ball beats the glove, 'beat' keeper wrong
+  const rs=zoneRect(shotZ),rk=zoneRect(keepZ),mx=.36,my=.2,col=(mode==='save'?shotZ:keepZ)%3;
   const rtb=()=>({x:rnd(rs.x0+mx,rs.x1-mx),y:rnd(rs.y0+my,rs.y1-my)});
-  if(saved){const tb=rtb();return{tb,H:{x:tb.x,y:tb.y}}}
+  if(mode==='save'){const tb=rtb();return{tb,H:{x:tb.x,y:tb.y}}}
+  const minD=mode==='near'?.7:.9;
   let best=null,bd=-1;
-  for(let i=0;i<40;i++){
+  for(let i=0;i<60;i++){
     const tb=rtb(),H={x:rnd(rk.x0+mx,rk.x1-mx),y:rnd(rk.y0+my,rk.y1-my)};
-    if(Math.hypot(H.x-tb.x,(H.y-tb.y)*1.2)<.9)continue;
+    if(Math.hypot(H.x-tb.x,(H.y-tb.y)*1.2)<minD)continue;
     const d=bodyClear(H,tr,tb,col);if(d>bd){bd=d;best={tb,H}}if(d>.62)break;
   }
   if(!best){best={tb:rtb(),H:{x:rk.cx,y:rk.cy}}}
   return best;
 }
-function makePlan(shot,keep){
-  const T=rnd(.46,.54),t=pickTargets(shot,keep,T+.06);
-  return{T,tb:{x:+t.tb.x.toFixed(3),y:+t.tb.y.toFixed(3)},H:{x:+t.H.x.toFixed(3),y:+t.H.y.toFixed(3)}};
+/* shot rules: power 0 soft / 1 medium / 2 hard, curve 0 straight / 1 curl left / 2 curl right */
+const PWT=[[.60,.68],[.46,.54],[.40,.44]];
+const adjacent=(a,b)=>Math.abs(((a/3)|0)-((b/3)|0))+Math.abs(a%3-b%3)===1;
+function decide(shot,keep,power,curve){
+  const top=shot<3,c=shot%3;
+  const pm=[0,.05,.2][power]+(top?.08:0)+(curve?.05:0);
+  if(Math.random()<pm){
+    let kind;
+    if(top)kind=Math.random()<.45?'over':(c===1?'bar':'post');
+    else kind=Math.random()<.7||c===1?'wide':'post';
+    return{out:'miss',kind};
+  }
+  if(shot===keep){
+    const ps=[1,1,.7][power]*(curve?.8:1);
+    return Math.random()<ps?{out:'saved',kind:'same'}:{out:'goal',kind:'beaten'};
+  }
+  if(power===0&&adjacent(shot,keep)&&Math.random()<.4)return{out:'saved',kind:'reach'};
+  return{out:'goal',kind:'clean'};
+}
+function makePlan(shot,keep,power,curve){
+  power=power==null?1:power;curve=curve||0;
+  const d=decide(shot,keep,power,curve),pw=PWT[power],T=rnd(pw[0],pw[1]),rs=zoneRect(shot),rk=zoneRect(keep);
+  const r3=v=>+v.toFixed(3);let tb,H,col=keep%3;
+  if(d.out==='miss'){
+    const c=shot%3,side=c===0?-1:(c===2?1:(Math.random()<.5?-1:1));
+    if(d.kind==='over')tb={x:rnd(rs.x0+.3,rs.x1-.3),y:GH+rnd(.45,1.1)};
+    else if(d.kind==='bar')tb={x:rnd(-.9,.9),y:GH-.06};
+    else if(d.kind==='post')tb={x:side*(GW/2-.06),y:rnd(.5,2.0)};
+    else tb={x:side*(GW/2+rnd(.5,1.4)),y:rnd(.3,1.6)};
+    H={x:rnd(rk.x0+.36,rk.x1-.36),y:rnd(rk.y0+.2,rk.y1-.2)};
+  }else{
+    const t=pickTargets(shot,keep,T+.06,d.out==='saved'?'save':(shot===keep?'near':'beat'));tb=t.tb;H=t.H;
+    if(d.out==='saved')col=shot%3;
+  }
+  const dir=curve===1?-1:1,ax=curve?dir*2*rnd(.8,1.3)/(T*T):0;
+  return{T:r3(T),tb:{x:r3(tb.x),y:r3(tb.y)},H:{x:r3(H.x),y:r3(H.y)},out:d.out,kind:d.kind,power,curve,ax:r3(ax),col,saved:d.out==='saved'};
 }
 Sim.ready=function(kits){
   resetActors();if(kits)Sim.kit=kits;Sim.mode='ready';Sim.ts=1;Sim.speed=1;
 };
 Sim.play=function(cur,cbs,shared){
   Sim.cur=cur;Sim.cbs=cbs;Sim.at=0;Sim.mode='run';
-  const pl=shared||makePlan(cur.shotZone,cur.keepZone),T=pl.T;
-  Sim.plan={T,tr:T+.06,tb:pl.tb,H:pl.H,col:cur.keepZone%3,saved:cur.shotZone===cur.keepZone,kicked:false,dived:false,resolved:false,doneAt:0};
+  const pl=shared||makePlan(cur.shotZone,cur.keepZone,1,0),T=pl.T;
+  Sim.plan={T,tr:T+.06,tb:pl.tb,H:pl.H,col:pl.col==null?cur.keepZone%3:pl.col,out:pl.out,kind:pl.kind,ax:pl.ax||0,power:pl.power||1,curve:pl.curve||0,saved:pl.out==='saved',kicked:false,dived:false,resolved:false,doneAt:0};
   Sim.K.x=0;Sim.K.set=.45;Sim.S.pose='run';Sim.S.t=0;Aud.whistle();
 };
 Sim.fast=function(on){Sim.speed=on?2.4:1};
 function doKick(){
   const b=Sim.ball,pl=Sim.plan,T=pl.T;
-  b.vx=pl.tb.x/T;b.vz=GZ/T;b.vy=(pl.tb.y-.11+.5*GR*T*T)/T;b.rs=-18;
+  b.vx=(pl.tb.x-.5*pl.ax*T*T)/T;b.vz=GZ/T;b.vy=(pl.tb.y-.11+.5*GR*T*T)/T;b.rs=-18;
   pl.kicked=true;Sim.mode='fly';Aud.kick();Sim.S.pose='strike';
   const [sx,sy]=P(0,0,0);for(let i=0;i<8;i++)Sim.parts.push({x:sx+rnd(-20,20),y:sy+rnd(-4,4),vx:rnd(-60,60),vy:rnd(-130,-40),g:260,rot:0,vr:0,size:rnd(3,6),col:'#3aa855',life:.7,fade:.4,type:'rect'});
 }
@@ -786,14 +838,24 @@ function resolveSave(){
   else{b.vx=dx*rnd(2.5,5.5)*(Math.random()<.2?-.5:1);b.vy=rnd(1.5,4.5);b.vz=rnd(-6.5,-2.5);pl.how='parry'}
   b.rs=rnd(-24,24);Aud.glove();Sim.shake=.9;Sim.excite=Math.max(Sim.excite,.55);
   const p=P(b.x,b.y,GZ);burst('sparks',p[0],p[1]);
-  Sim.S.pose='sad';Sim.S.t=0;Sim.hi={shot:Sim.cur.shotZone,keep:Sim.cur.keepZone,t0:Sim.time};
-  Aud.groan();if(Sim.cbs&&Sim.cbs.onResult)Sim.cbs.onResult(true);
+  Sim.S.pose='sad';Sim.S.t=0;Sim.hi={shot:Sim.cur.shotZone,keep:Sim.cur.keepZone,t0:Sim.time,out:'saved'};
+  Aud.groan();if(Sim.cbs&&Sim.cbs.onResult)Sim.cbs.onResult('saved');
 }
 function resolveGoal(){
   const pl=Sim.plan;pl.resolved=true;pl.resAt=Sim.at;
-  Sim.excite=1;Sim.S.pose='cel';Sim.S.t=0;Sim.hi={shot:Sim.cur.shotZone,keep:Sim.cur.keepZone,t0:Sim.time};
+  Sim.excite=1;Sim.S.pose='cel';Sim.S.t=0;Sim.hi={shot:Sim.cur.shotZone,keep:Sim.cur.keepZone,t0:Sim.time,out:'goal'};
   burst('confetti');Aud.cheer(1);
-  if(Sim.cbs&&Sim.cbs.onResult)Sim.cbs.onResult(false);
+  if(Sim.cbs&&Sim.cbs.onResult)Sim.cbs.onResult('goal');
+}
+function resolveMiss(){
+  const b=Sim.ball,pl=Sim.plan;pl.resolved=true;pl.resAt=Sim.at;
+  if(pl.kind==='post'||pl.kind==='bar'){
+    b.z=GZ-.05;b.vz=-rnd(3,6);b.vx=(pl.kind==='post'?-Math.sign(b.x):rnd(-1,1))*rnd(1.5,4);b.vy=pl.kind==='bar'?-rnd(1,3):rnd(1,4);b.rs=rnd(-20,20);
+    Aud.glove();Sim.shake=1;const p=P(b.x,b.y,GZ);burst('sparks',p[0],p[1]);
+  }
+  Sim.excite=Math.max(Sim.excite,.5);Sim.S.pose='sad';Sim.S.t=0;
+  Sim.hi={shot:Sim.cur.shotZone,keep:Sim.cur.keepZone,t0:Sim.time,out:'miss'};
+  Aud.ooh();Aud.groan();if(Sim.cbs&&Sim.cbs.onResult)Sim.cbs.onResult('miss');
 }
 function stepBall(dt){
   const b=Sim.ball,pl=Sim.plan;
@@ -802,10 +864,11 @@ function stepBall(dt){
     return}
   if(!pl.kicked)return;
   const pz=b.z;
+  if(!pl.resolved&&pl.ax)b.vx+=pl.ax*dt;
   b.vy-=GR*dt;b.x+=b.vx*dt;b.y+=b.vy*dt;b.z+=b.vz*dt;b.rot+=b.rs*dt;
   if(b.y<.11){b.y=.11;if(b.vy<-.9){b.vy=-b.vy*.58;Aud.bounce(clamp(-b.vy/6,.1,1))}else b.vy=0;const f=Math.exp(-(b.vy===0?1.3:.5)*dt);b.vx*=f;b.vz*=f;b.rs=Math.hypot(b.vx,b.vz)*3.2*Math.sign(b.rs||1)}
-  if(!pl.resolved&&pz<GZ&&b.z>=GZ){ if(pl.saved)resolveSave(); else resolveGoal() }
-  if(!pl.saved&&b.z>GZ){
+  if(!pl.resolved&&pz<GZ&&b.z>=GZ){ if(pl.out==='saved')resolveSave(); else if(pl.out==='miss')resolveMiss(); else resolveGoal() }
+  if(pl.out==='goal'&&b.z>GZ){
     if(b.z>12.35){b.vz*=Math.exp(-11*dt);b.vx*=Math.exp(-4*dt);b.vy*=Math.exp(-1.2*dt);
       if(!b.netHit){b.netHit=true;Sim.rip={x:b.x,y:b.y,t0:Sim.time,amp:clamp(Math.hypot(b.vx,b.vy,b.vz)/20,.5,1.25)};Aud.net();Sim.shake=.7}}
     if(b.z>NZ-.12){b.z=NZ-.12;b.vz=-Math.abs(b.vz)*.06}
@@ -878,7 +941,9 @@ function render(rt){
   // zone overlay: faint grid while aiming, highlight on reveal
   const hi=Sim.hi;
   if(hi){const a=clamp((Sim.time-hi.t0)*4,0,1);
-    if(hi.shot===hi.keep)drawZone(hi.shot,'#39ff9c',.34*a,'SAVED');
+    if(hi.out==='saved'){if(hi.shot!==hi.keep)drawZone(hi.keep,'#35e7ff',.3*a,'DIVE');drawZone(hi.shot,'#39ff9c',.34*a,'SAVED')}
+    else if(hi.out==='miss'){drawZone(hi.keep,'#35e7ff',.3*a,'DIVE');drawZone(hi.shot,'#ff4d5e',.32*a,'MISS')}
+    else if(hi.shot===hi.keep)drawZone(hi.shot,'#ffd23f',.36*a,'BEATEN');
     else{drawZone(hi.keep,'#35e7ff',.3*a,'DIVE');drawZone(hi.shot,'#ffd23f',.36*a,'SHOT')}}
   const b=Sim.ball,kk=Sim.kit.k;
   if(b.z>GZ+.05)drawBall(b);
@@ -906,7 +971,7 @@ function frame(now){
 }
 requestAnimationFrame(frame);
 
-window.Engine={Sim,Aud,zoneRect,GW,GH,W,H,makePlan,preview};
+window.Engine={Sim,Aud,zoneRect,GW,GH,W,H,makePlan,decide,preview};
 })();
 
 </script>
@@ -923,6 +988,7 @@ const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;'
 const PICK_MS=7000,GRACE=800,NZONE=6;
 const TC=['#4aa3ff','#ff8a3d'];
 const ZN=['TOP LEFT','TOP MIDDLE','TOP RIGHT','LOW LEFT','LOW MIDDLE','LOW RIGHT'];
+const PWN=['SOFT','MEDIUM','HARD'],CVN=['STRAIGHT','CURL LEFT','CURL RIGHT'];
 const RPS=[{n:'ROCK',e:'✊'},{n:'PAPER',e:'✋'},{n:'SCISSORS',e:'✌️'}];
 const rint=n=>Math.floor(Math.random()*n);
 
@@ -977,27 +1043,64 @@ const saveCfg=()=>{try{localStorage.setItem('pk2-cfg',JSON.stringify(cfg))}catch
 const cleanName=(s,d)=>(String(s||'').replace(/[<>]/g,'').trim().slice(0,12).toUpperCase())||d;
 
 /* ---------------- transport state ---------------- */
-const Net={role:'local',uid:'',code:'',room:null,off:0,now(){return Date.now()+this.off}};
+const ROOM_TTL=6*3600*1000,HB_MS=4000,TAKEOVER_MS=11000,FORFEIT_MS=45000;
+const Net={role:'local',uid:'',code:'',room:null,off:0,conn:true,hbSeen:0,taking:false,seenState:false,watching:false,timers:[],listeners:[],now(){return Date.now()+this.off}};
 let H=null;                        // active host (this device runs the rules)
 let authPromise=null;
-const ensureAuth=()=>{if(!fb)return Promise.reject(new Error('Online play needs an internet connection — Firebase could not load.'));
+const TS=()=>firebase.database.ServerValue.TIMESTAMP;
+function friendly(e){
+  const code=String(e&&e.code||''),msg=String(e&&e.message||e||'');
+  if(code==='auth/operation-not-allowed'||/operation-not-allowed/.test(msg))return 'Anonymous sign-in is switched off. In the Firebase console open Authentication → Sign-in method and enable Anonymous.';
+  if(code==='auth/unauthorized-domain'||/unauthorized.domain/i.test(msg))return 'This website address is not authorized for sign-in. In the Firebase console add it under Authentication → Settings → Authorized domains.';
+  if(code==='auth/network-request-failed'||/network.?request.?failed/i.test(msg))return 'No internet connection. Check your network and try again.';
+  if(/api.?key/i.test(code+msg))return 'The Firebase API key in this game is not valid for that project.';
+  if(/permission.?denied/i.test(code+msg))return 'The database rules blocked this request. Make sure the penaltyRooms rules from the README are published, then run MENU → Test online connection.';
+  return msg||'Could not connect to the game room.';
+}
+const isPerm=e=>/permission.?denied/i.test(String(e&&e.code||'')+String(e&&e.message||e||''));
+function werr(e){if(isPerm(e))fail(e);else console.warn('[net]',e)}      // transient network errors are retried by Firebase itself
+const ensureAuth=()=>{if(!fb)return Promise.reject(new Error('Online play could not start: the Firebase scripts did not load. Check your internet connection or ad-blocker.'));
   if(fb.auth.currentUser)return Promise.resolve(fb.auth.currentUser);
   if(!authPromise)authPromise=fb.auth.signInAnonymously().then(r=>r.user).catch(e=>{authPromise=null;throw e});return authPromise};
 const roomCode=()=>{const c='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';let s='';for(let i=0;i<6;i++)s+=c[rint(c.length)];return s};
 function send(m){
   if(Net.role!=='player'||!Net.room)return;
   const id=Date.now().toString(36)+Math.random().toString(36).slice(2,7);
-  Net.room.child('actions').push().set({...m,id,uid:Net.uid}).catch(fail);
+  Net.room.child('actions').push().set({...m,id,uid:Net.uid}).catch(werr);
 }
-function markPresent(){if(!Net.room||!Net.uid)return;const p=Net.room.child('presence/'+Net.uid);p.set(true).catch(fail);p.onDisconnect().remove()}
-const home=()=>location.replace(location.pathname+location.search);
+function markPresent(){if(!Net.room||!Net.uid)return;const p=Net.room.child('presence/'+Net.uid);p.onDisconnect().remove().then(()=>p.set(true)).catch(werr)}
+function badge(){
+  const b=$('netb');if(!b)return;
+  if(!Net.room){b.hidden=true;return}
+  b.hidden=false;b.className='netb '+(Net.conn?'ok':'bad');b.textContent=Net.conn?'● ONLINE':'● RECONNECTING…';
+}
+async function netReady(){
+  watchNet();
+  await Promise.race([new Promise(r=>fb.db.ref('.info/serverTimeOffset').once('value',x=>{Net.off=x.val()||0;r()})),new Promise(r=>setTimeout(r,2500))]);
+}
+function watchNet(){
+  if(Net.watching||!fb)return;Net.watching=true;
+  fb.db.ref('.info/connected').on('value',s=>{
+    const on=!!s.val();Net.conn=on;badge();
+    if(on){Net.hbSeen=Date.now();if(Net.room)markPresent()}
+  });
+  fb.db.ref('.info/serverTimeOffset').on('value',s=>{Net.off=s.val()||0});
+  document.addEventListener('visibilitychange',()=>{if(!document.hidden&&Net.room){Net.hbSeen=Math.max(Net.hbSeen,Date.now()-2000);if(Net.role==='host')beat();wake()}});
+}
+let wl=null;
+function wake(){try{if(navigator.wakeLock&&Net.room&&!document.hidden)navigator.wakeLock.request('screen').then(l=>{wl=l}).catch(()=>{})}catch(e){}}
+function beat(){if(Net.role==='host'&&Net.room&&Net.conn)Net.room.child('hb').set(TS()).catch(werr)}
+function saveLast(){try{localStorage.setItem('pk2-last',JSON.stringify({code:Net.code,t:Date.now()}))}catch(e){}}
+function clearLast(){try{localStorage.removeItem('pk2-last')}catch(e){}}
+function lastRoom(){try{const l=JSON.parse(localStorage.getItem('pk2-last')||'null');if(l&&l.code&&Date.now()-l.t<ROOM_TTL)return l.code}catch(e){}return null}
+const home=()=>location.replace(location.pathname+location.search.replace(/#.*$/,''));
 
 /* ============================================================
    HOST: the rules engine (runs in this tab for every mode)
    ============================================================ */
-function makeHost(kind,N,diff){
-  const M={v:0,kind,N,diff,players:[],tn:['BLUE FC','ORANGE FC'],phase:'lobby',toss:null,first:-1,n:0,res:[[],[]],goals:[0,0],saves:[0,0],cur:null,kick:null,winner:-1,notice:null,conn:{},hostId:'',room:''};
-  const P={pick:[null,null],tpick:[null,null],hist:{shots:[],keeps:[],aiShots:[]},q:[],curSeq:0,kickSeq:0,noteSeq:0,paused:false,pAt:0,dead:false,timer:0};
+function makeHost(kind,N,diff,resume){
+  const M=resume||{v:0,epoch:0,kind,N,diff,players:[],tn:['BLUE FC','ORANGE FC'],phase:'lobby',toss:null,first:-1,n:0,res:[[],[]],goals:[0,0],saves:[0,0],cur:null,kick:null,winner:-1,notice:null,conn:{},hostId:'',room:''};
+  const P={gone:[0,0],lobGone:{},opt:{pw:1,cv:0},pick:[null,null],tpick:[null,null],hist:{shots:[],keeps:[],aiShots:[]},q:[],curSeq:0,kickSeq:0,noteSeq:0,paused:false,pAt:0,dead:false,timer:0};
   const host={M,onChange:null,P};
   const snow=()=>Net.now();
   const pub=()=>{M.v++;if(host.onChange)host.onChange(M)};
@@ -1023,6 +1126,10 @@ function makeHost(kind,N,diff){
     if(d==='pro')return sample(p.map(v=>Math.pow(v,1.6)));
     return Math.random()<.6?argmax(p):sample(p);
   }
+  function aiOpt(){
+    const d=M.diff,w=d==='rookie'?[.3,.6,.1]:(d==='pro'?[.25,.5,.25]:[.3,.4,.3]);
+    return{pw:sample(w),cv:Math.random()<.35?1+rint(2):0};
+  }
   function aiShot(){
     const q=predict(P.hist.keeps),d=M.diff,last=P.hist.aiShots[P.hist.aiShots.length-1];
     let w=d==='rookie'?new Array(NZONE).fill(1):(d==='pro'?q.map(v=>Math.pow(1-v,2)+.02):q.map(v=>Math.pow(1-v,5)+.01));
@@ -1032,7 +1139,7 @@ function makeHost(kind,N,diff){
 
   /* ---- toss ---- */
   function startToss(){
-    M.phase='toss';M.first=-1;M.n=0;M.res=[[],[]];M.goals=[0,0];M.saves=[0,0];M.cur=null;M.kick=null;M.winner=-1;
+    M.forfeit=false;M.phase='toss';M.first=-1;M.n=0;M.res=[[],[]];M.goals=[0,0];M.saves=[0,0];M.cur=null;M.kick=null;M.winner=-1;
     P.hist={shots:[],keeps:[],aiShots:[]};P.q=[];
     M.toss={round:0,locked:[false,false],reveal:null,result:null,winner:-1,deadline:snow()+PICK_MS,cdl:0,choice:''};
     P.tpick=[null,null];note('COIN TOSS','Rock · Paper · Scissors','info',1700);
@@ -1066,15 +1173,17 @@ function makeHost(kind,N,diff){
 
   /* ---- kicks ---- */
   function beginKick(){
-    if(M.phase!=='intro'&&M.phase!=='anim')return;
+    if(M.forfeit||(M.phase!=='intro'&&M.phase!=='anim'))return;
     const n=M.n,ts=M.first^(n&1),kt=1-ts,k=n>>1,tp=teamPl(ts),kp=teamPl(kt),sp=tp[k%tp.length],kpl=kp[k%kp.length];
     M.cur={id:++P.curSeq,n,ts,kt,k,sid:sp.id,kid:kpl.id,deadline:snow()+PICK_MS,locked:[false,false]};
     P.pick=[null,null];M.phase='kick';
-    [[0,sp],[1,kpl]].forEach(([i,pl])=>{if(pl.ai)later(900+rint(1500),()=>submitPick(i,i===0?aiShot():aiKeep()))});
+    P.opt={pw:1,cv:0};
+    [[0,sp],[1,kpl]].forEach(([i,pl])=>{if(pl.ai)later(900+rint(1500),()=>{if(i===0){const o=aiOpt();submitPick(0,aiShot(),o.pw,o.cv)}else submitPick(1,aiKeep())})});
     pub();
   }
-  function submitPick(i,z){
+  function submitPick(i,z,pw,cv){
     if(M.phase!=='kick'||!M.cur||P.pick[i]!=null||!Number.isInteger(z)||z<0||z>=NZONE)return;
+    if(i===0)P.opt={pw:(pw===0||pw===1||pw===2)?pw:1,cv:(cv===0||cv===1||cv===2)?cv:0};
     P.pick[i]=z;M.cur.locked[i]=true;
     const pl=byId(i===0?M.cur.sid:M.cur.kid);
     if(pl&&!pl.ai){(i===0?P.hist.shots:P.hist.keeps).push(z)}
@@ -1082,17 +1191,17 @@ function makeHost(kind,N,diff){
     else pub();
   }
   function resolveKick(){
-    if(M.phase!=='kick')return;
+    if(M.forfeit||M.phase!=='kick')return;
     const c=M.cur;for(let i=0;i<2;i++)if(P.pick[i]==null)P.pick[i]=rint(NZONE);
-    const[shot,keep]=P.pick,plan=E.makePlan(shot,keep),id=++P.kickSeq;
-    M.kick={id,n:c.n,ts:c.ts,kt:c.kt,sid:c.sid,kid:c.kid,shot,keep,T:plan.T,tb:plan.tb,H:plan.H,saved:shot===keep,committed:false};
+    const[shot,keep]=P.pick,plan=E.makePlan(shot,keep,P.opt.pw,P.opt.cv),id=++P.kickSeq;
+    M.kick={id,n:c.n,ts:c.ts,kt:c.kt,sid:c.sid,kid:c.kid,shot,keep,T:plan.T,tb:plan.tb,H:plan.H,out:plan.out,kind:plan.kind,power:plan.power,curve:plan.curve,ax:plan.ax,col:plan.col,saved:plan.out==='saved',committed:false};
     M.phase='anim';pub();
     later(9000,()=>animDone(id));          // safety net if no view reports completion
   }
   function animDone(id){
-    if(M.phase!=='anim'||!M.kick||M.kick.id!==id||M.kick.committed)return;
-    const k=M.kick;k.committed=true;M.res[k.ts].push(k.saved?'s':'g');
-    if(k.saved)M.saves[k.kt]++;else M.goals[k.ts]++;
+    if(M.forfeit||M.phase!=='anim'||!M.kick||M.kick.id!==id||M.kick.committed)return;
+    const k=M.kick;k.committed=true;M.res[k.ts].push(k.out==='saved'?'s':(k.out==='miss'?'m':'g'));
+    if(k.out==='saved')M.saves[k.kt]++;else if(k.out==='goal')M.goals[k.ts]++;
     const w=checkEnd();
     if(w>=0){M.winner=w;note('FULL TIME','','info',1700);pub();later(1900,()=>{M.phase='end';pub()})}
     else{M.n++;pub();later(kind==='online'?1700:1100,beginKick)}
@@ -1127,21 +1236,43 @@ function makeHost(kind,N,diff){
         if(M.phase==='lobby'&&p&&p.team!=null&&pid!==M.hostId){p.ready=!!m.v;pub()}break;
       case 'kit':
         if(p&&M.phase==='lobby'){p.kit=cleanKit(m.kit,p.kit);pub()}break;
+      case 'leave':
+        if(p&&M.phase==='lobby'&&pid!==M.hostId){M.players=M.players.filter(x=>x!==p);pub()}break;
       case 'tname':
         if(M.phase==='lobby'&&p&&p.team!=null&&teamPl(p.team)[0]===p){M.tn[p.team]=cleanName(m.name,p.team?'ORANGE FC':'BLUE FC');pub()}break;
       case 'start':
         if(pid===M.hostId&&M.phase==='lobby'&&lobbyOk().ok)startToss();break;
       case 'rps':
-        if(p&&p.team!=null&&teamPl(p.team)[0]===p)tossPick(p.team,m.v);break;
+        if(p&&p.team!=null&&teamPl(p.team)[0]===p&&(m.rd==null||!M.toss||m.rd===M.toss.round))tossPick(p.team,m.v);break;
       case 'choose':
         if(M.phase==='choose'&&p&&teamPl(M.toss.winner)[0]===p)chooseSide(m.c);break;
       case 'pick':
-        if(M.phase==='kick'&&M.cur){if(pid===M.cur.sid)submitPick(0,m.zone);else if(pid===M.cur.kid)submitPick(1,m.zone)}break;
+        if(M.phase==='kick'&&M.cur&&(m.cid==null||m.cid===M.cur.id)){if(pid===M.cur.sid)submitPick(0,m.zone,m.pw,m.cv);else if(pid===M.cur.kid)submitPick(1,m.zone)}break;
       case 'again':
         if(pid===M.hostId&&M.phase==='end')startToss();break;
     }
   };
   host.touch=pub;host.animDone=animDone;host.startToss=startToss;
+  host.adopt=function(){                       // another device was the host a moment ago: pick the match up where it was
+    const r=snow();P.curSeq=M.cur?M.cur.id:0;P.kickSeq=M.kick?M.kick.id:0;P.noteSeq=M.notice?M.notice.id:0;
+    M.hostId=Net.uid;M.epoch=(M.epoch||0)+1;M.conn=M.conn||{};
+    const me=byId(Net.uid);if(me)me.ready=true;
+    switch(M.phase){
+      case 'toss':if(M.toss){M.toss.locked=[false,false];M.toss.reveal=null;M.toss.result=null;M.toss.deadline=r+PICK_MS;P.tpick=[null,null];note('HOST CHANGED','Pick again','info',2400)}break;
+      case 'choose':if(M.toss){M.toss.cdl=r+PICK_MS}break;
+      case 'intro':later(1500,beginKick);break;
+      case 'kick':if(M.cur){M.cur.locked=[false,false];M.cur.deadline=r+PICK_MS;P.pick=[null,null];note('HOST CHANGED','Please lock your pick again','info',2600)}break;
+      case 'anim':if(M.kick){const id=M.kick.id;
+        if(M.kick.committed){if(M.winner>=0){later(1500,()=>{M.phase='end';pub()})}else later(1200,beginKick)}
+        else later(9000,()=>animDone(id))}break;
+    }
+    pub();
+  };
+  function forfeit(w){
+    if(M.phase==='end'||M.forfeit||P.dead)return;P.q=[];M.winner=w;M.forfeit=true;
+    note('FORFEIT','The other side left the match','info',2200);pub();
+    later(1900,()=>{M.phase='end';pub()});
+  }
   host.begin=()=>{P.timer=setInterval(tick,100);pub()};
   host.destroy=()=>{P.dead=true;clearInterval(P.timer)};
   host.pause=()=>{if(P.paused)return;P.paused=true;P.pAt=snow()};
@@ -1161,6 +1292,25 @@ function makeHost(kind,N,diff){
     }
     if(M.phase==='choose'&&M.toss&&t>M.toss.cdl+GRACE)chooseSide(Math.random()<.5?'shoot':'keep');
     if(M.phase==='kick'&&M.cur&&t>M.cur.deadline+GRACE)resolveKick();
+    if(kind==='online')watchPresence(t);
+  }
+  function watchPresence(t){
+    const here=p=>p.ai||p.id===M.hostId||(M.conn&&M.conn[p.id]);
+    if(M.phase==='lobby'){
+      M.players.slice().forEach(p=>{
+        if(here(p)){delete P.lobGone[p.id];return}
+        if(!P.lobGone[p.id])P.lobGone[p.id]=t;
+        else if(t-P.lobGone[p.id]>15000){M.players=M.players.filter(x=>x!==p);delete P.lobGone[p.id];pub()}
+      });return;
+    }
+    if(['toss','choose','intro','kick','anim'].includes(M.phase)){
+      [0,1].forEach(k=>{
+        const ps=teamPl(k);if(!ps.length)return;
+        if(ps.some(here)){P.gone[k]=0}
+        else if(!P.gone[k])P.gone[k]=t;
+        else if(t-P.gone[k]>FORFEIT_MS)forfeit(1-k);
+      });
+    }
   }
   return host;
 }
@@ -1168,7 +1318,7 @@ function makeHost(kind,N,diff){
 /* ============================================================
    VIEW: renders any snapshot, same code for host, local and remote
    ============================================================ */
-const V={M:null,mine:new Set(),sel:[null,null],lock:[false,false],curId:0,kickId:0,noteId:0,resolved:0,logged:0,phase:'',autoSent:false,
+const V={epoch:0,opt:{pw:1,cv:0},M:null,mine:new Set(),sel:[null,null],lock:[false,false],curId:0,kickId:0,noteId:0,resolved:0,logged:0,phase:'',autoSent:false,
   lobbySig:'',tossKey:'',endShown:0,lastSec:-1,posts:[null,null]};
 function fixM(M){
   M.players=M.players||[];M.conn=M.conn||{};
@@ -1188,6 +1338,7 @@ function act(pid,m){if(Net.role==='player')send(m);else if(H)H.act(pid,m)}
 
 function apply(raw){
   const M=fixM(raw);V.M=M;
+  if((M.epoch||0)!==V.epoch){V.epoch=M.epoch||0;V.lock=[false,false];V.autoSent=false}
   if(Net.role==='player'||!V.mine.size)V.mine=new Set([Net.uid]);
   renderBoard(M);
   if(M.notice&&M.notice.id!==V.noteId){V.noteId=M.notice.id;banner(M.notice.text,M.notice.cls,M.notice.ms,M.notice.sub)}
@@ -1204,7 +1355,7 @@ function apply(raw){
   if(ph==='lobby')renderLobby(M);
   if(ph==='toss'||ph==='choose')renderToss(M);
   if(ph==='kick'&&M.cur&&M.cur.id!==V.curId){
-    V.curId=M.cur.id;Sim.ready(kitsFor(M,M.cur));V.sel=[null,null];V.lock=[false,false];V.autoSent=false;Aud.tick();
+    V.curId=M.cur.id;Sim.ready(kitsFor(M,M.cur));V.sel=[null,null];V.lock=[false,false];V.autoSent=false;V.opt={pw:1,cv:0};Aud.tick();
   }
   if(ph==='anim'&&M.kick&&M.kick.id!==V.kickId){
     V.kickId=M.kick.id;
@@ -1220,7 +1371,7 @@ function kitsFor(M,c){const s=plr(M,c.sid),k=plr(M,c.kid);return kitPair(s?s.kit
 /* ---- scoreboard ---- */
 function displayScores(M){
   const res=[M.res[0].slice(),M.res[1].slice()],goals=M.goals.slice(),saves=M.saves.slice(),k=M.kick;
-  if(k&&!k.committed&&V.resolved===k.id){res[k.ts].push(k.saved?'s':'g');if(k.saved)saves[k.kt]++;else goals[k.ts]++}
+  if(k&&!k.committed&&V.resolved===k.id){res[k.ts].push(k.out==='saved'?'s':(k.out==='miss'?'m':'g'));if(k.out==='saved')saves[k.kt]++;else if(k.out==='goal')goals[k.ts]++}
   return{res,goals,saves};
 }
 function renderBoard(M){
@@ -1234,7 +1385,7 @@ function renderBoard(M){
     const slots=Math.max(M.N,d.res[i].length+(sd?1:0));let h='';
     for(let k=0;k<slots;k++){
       const r=d.res[i][k];
-      if(r)h+=`<span class="dot ${r}">${r==='g'?'✓':'✕'}</span>`;
+      if(r)h+=`<span class="dot ${r}">${r==='g'?'✓':(r==='m'?'–':'✕')}</span>`;
       else{const cur=c&&shooting&&k===d.res[i].length&&M.phase==='kick';h+=`<span class="dot${over?' skip':''}${cur?' cur':''}"></span>`}
     }
     $('dots'+i).innerHTML=h;
@@ -1255,16 +1406,21 @@ function banner(txt,cls,ms,sub){
 /* ---- animation hooks ---- */
 function startAnim(k){
   $('ff').hidden=false;
-  Sim.play({shotZone:k.shot,keepZone:k.keep},{onResult:()=>onResult(k),onDone:()=>onDone(k.id)},{T:k.T,tb:k.tb,H:k.H});
+  Sim.play({shotZone:k.shot,keepZone:k.keep},{onResult:()=>onResult(k),onDone:()=>onDone(k.id)},{T:k.T,tb:k.tb,H:k.H,out:k.out||(k.saved?'saved':'goal'),kind:k.kind,power:k.power,curve:k.curve,ax:k.ax,col:k.col});
 }
 function onResult(k){
   if(V.resolved===k.id)return;V.resolved=k.id;
   const M=V.M;renderBoard(M);
-  const s=plr(M,k.sid),kp=plr(M,k.kid),top=!k.saved&&(k.shot===0||k.shot===2);
-  banner(k.saved?'SAVED!':(top?'TOP BINS!':'GOAL!'),k.saved?'bad':'good',1800,k.saved?(kp?kp.name:'')+' guessed right':(s?s.name:'')+' scores');
+  const s=plr(M,k.sid),kp=plr(M,k.kid),out=k.out||(k.saved?'saved':'goal'),top=out==='goal'&&(k.shot===0||k.shot===2);
+  const MS={over:'OVER THE BAR!',wide:'WIDE!',post:'OFF THE POST!',bar:'CROSSBAR!'};
+  const sn=s?s.name:'',kn=kp?kp.name:'';
+  if(out==='saved')banner('SAVED!','bad',1800,k.kind==='reach'?kn+' got a hand to it':kn+' guessed right');
+  else if(out==='miss')banner(MS[k.kind]||'MISSED!','bad',1800,sn+' missed the target');
+  else banner(top?'TOP BINS!':'GOAL!','good',1800,k.shot===k.keep?sn+' blasted it past the gloves':sn+' scores');
   if(V.logged!==k.id){V.logged=k.id;
-    const li=document.createElement('li');li.className=k.saved?'s':'g';
-    li.innerHTML=`<b>${k.n+1}.</b> ${esc(s?s.name:'?')} aimed <b>${k.shot+1}</b> · ${esc(kp?kp.name:'?')} dived <b>${k.keep+1}</b> → <b class="r">${k.saved?'SAVED':'GOAL'}</b>`;
+    const li=document.createElement('li');li.className=out==='goal'?'g':'s';
+    const how=PWN[k.power==null?1:k.power]+(k.curve?' · CURL '+(k.curve===1?'L':'R'):'');
+    li.innerHTML=`<b>${k.n+1}.</b> ${esc(sn||'?')} aimed <b>${k.shot+1}</b> <i>(${how})</i> · ${esc(kn||'?')} dived <b>${k.keep+1}</b> → <b class="r">${out==='saved'?'SAVED':(out==='miss'?'MISSED':'GOAL')}</b>`;
     $('log').appendChild(li);
   }
 }
@@ -1315,6 +1471,7 @@ function buildPosts(){
     el.innerHTML=`<div class="pk-head"><span class="pk-ico">${role?'🧤':'⚽'}</span><div><b>${role?'KEEPER · SAVE ZONES':'SHOOTER · SHOOT ZONES'}</b><small class="pw"></small></div><span class="pk-st"></span></div>
       <div class="pk-msg"></div>
       <div class="gp"><div class="gp-net"></div><div class="gp-grid"></div><div class="gp-turf"></div></div>
+      ${role===0?`<div class="shotopts"><div class="so1"><label>POWER</label><div class="seg" data-opt="pw"><button data-v="0">SOFT</button><button data-v="1">MEDIUM</button><button data-v="2">HARD</button></div><small data-hint="pw"></small></div><div class="so1"><label>CURVE</label><div class="seg" data-opt="cv"><button data-v="0">STRAIGHT</button><button data-v="1">↰ LEFT</button><button data-v="2">RIGHT ↱</button></div><small data-hint="cv"></small></div></div>`:''}
       <div class="pk-foot"><button class="go lockb" disabled>${role?'LOCK DIVE':'LOCK SHOT'}</button><span class="pk-hint"></span></div>`;
     const grid=el.querySelector('.gp-grid'),cells=[];
     for(let z=0;z<NZONE;z++){
@@ -1322,10 +1479,14 @@ function buildPosts(){
       b.addEventListener('click',()=>zoneClick(role,z));grid.appendChild(b);cells.push(b);
     }
     el.querySelector('.lockb').addEventListener('click',()=>{if(V.sel[role]!=null)submitPick(role,V.sel[role])});
+    el.querySelectorAll('[data-opt]').forEach(g=>g.addEventListener('click',e=>{const b=e.target.closest('button');if(!b||g.classList.contains('dis'))return;setOpt(g.dataset.opt,+b.dataset.v)}));
     host.appendChild(el);
     V.posts[role]={el,cells,who:el.querySelector('.pw'),msg:el.querySelector('.pk-msg'),st:el.querySelector('.pk-st'),lockb:el.querySelector('.lockb'),hint:el.querySelector('.pk-hint')};
   });
 }
+const HINT_PW=['Slow and safe. Can’t miss, but a keeper next door can still reach it.','Balanced.','Fast but risky: may sail wide, and can blast through a correct dive.'];
+const HINT_CV=['Straight shot.','Bends left. Slightly riskier, can curl away from a correct dive.','Bends right. Slightly riskier, can curl away from a correct dive.'];
+function setOpt(k,v){V.opt[k]=v;Aud.tick();if(V.M)renderPosts(V.M)}
 function roleOf(M,role){return role===0?plr(M,M.cur&&M.cur.sid):plr(M,M.cur&&M.cur.kid)}
 function canPick(M,role){
   if(M.phase!=='kick'||!M.cur)return false;
@@ -1341,7 +1502,7 @@ function submitPick(role,z){
   const M=V.M;if(!M||!M.cur||V.lock[role]&&localKind())return;
   const pl=roleOf(M,role);if(!pl)return;
   V.lock[role]=true;Aud.init();Aud.lock();
-  act(pl.id,{t:'pick',zone:z});renderPosts(M);renderPrompt(M);
+  act(pl.id,role===0?{t:'pick',zone:z,pw:V.opt.pw,cv:V.opt.cv,cid:M.cur.id}:{t:'pick',zone:z,cid:M.cur.id});renderPosts(M);renderPrompt(M);
 }
 function renderPosts(M){
   const inK=M.phase==='kick'||M.phase==='anim',c=M.cur;
@@ -1364,6 +1525,8 @@ function renderPosts(M){
     p.msg.textContent=M.phase==='anim'?'Kick in progress…':(locked?'🔒 LOCKED IN — waiting for the other side…':'');
     p.el.classList.toggle('hidegrid',!active);
     p.hint.innerHTML=localKind()?'':'Keys <b>1–6</b> · <b>Enter</b> locks';
+    if(role===0){p.el.querySelectorAll('[data-opt]').forEach(g=>{g.classList.toggle('dis',!active);g.querySelectorAll('button').forEach(b=>b.classList.toggle('on',+b.dataset.v===V.opt[g.dataset.opt]))});
+      p.el.querySelector('[data-hint=pw]').textContent=HINT_PW[V.opt.pw];p.el.querySelector('[data-hint=cv]').textContent=HINT_CV[V.opt.cv]}
     p.st.textContent=locked?'✓':'';
   });
   // waiting card for spectators / non-kick phases
@@ -1416,7 +1579,7 @@ function renderToss(M){
 }
 function rpsClick(t,i){
   const M=V.M;if(!M||M.phase!=='toss')return;Aud.init();Aud.lock();
-  const cap=teamPlayers(M,t)[0];if(!cap)return;act(cap.id,{t:'rps',v:i});
+  const cap=teamPlayers(M,t)[0];if(!cap)return;act(cap.id,{t:'rps',v:i,rd:M.toss?M.toss.round:0});
 }
 function chooseClick(c){
   const M=V.M;if(!M||M.phase!=='choose')return;Aud.init();Aud.lock();
@@ -1427,7 +1590,7 @@ function chooseClick(c){
 function showEnd(M){
   const w=M.winner,sd=M.res[0].length>M.N||M.res[1].length>M.N;
   $('enTitle').textContent=tName(M,w)+' WINS!';$('enTitle').style.setProperty('--c',TC[w]);
-  $('enSmall').textContent=sd?'SUDDEN DEATH WINNER':'FULL TIME';
+  $('enSmall').textContent=M.forfeit?'OPPONENT LEFT · FORFEIT':(sd?'SUDDEN DEATH WINNER':'FULL TIME');
   $('enScore').textContent=M.goals[0]+' – '+M.goals[1];
   $('enBody').innerHTML=[0,1].map(i=>`<tr><td style="color:${TC[i]}">${esc(tName(M,i))}</td><td>${M.goals[i]}</td><td>${M.saves[i]}</td></tr>`).join('');
   const canAgain=Net.role!=='player';$('enAgain').disabled=!canAgain;$('enAgain').textContent=canAgain?'REMATCH':'HOST STARTS REMATCH';
@@ -1476,14 +1639,18 @@ function lobbyStatusOf(M){
 /* ============================================================
    Starting each kind of match
    ============================================================ */
-function stopHost(){if(H){H.destroy();H=null}}
-function begin(host,mine){
-  stopHost();H=host;V.mine=new Set(mine);V.phase='';V.curId=0;V.kickId=0;V.noteId=0;V.resolved=0;V.logged=0;V.sel=[null,null];V.lock=[false,false];
-  $('log').innerHTML='';
+function stopHost(){if(H){H.destroy();H=null}detachHostIO()}
+function detachHostIO(){Net.listeners.forEach(l=>{try{l.ref.off(l.type,l.fn)}catch(e){}});Net.listeners=[];Net.timers.forEach(clearInterval);Net.timers=[]}
+function listen(ref,type,fn){ref.on(type,fn);Net.listeners.push({ref,type,fn})}
+function wire(host){
   host.onChange=M=>{
-    if(Net.role==='host'&&Net.room)Net.room.child('state').set(JSON.parse(JSON.stringify(M))).catch(fail);
+    if(Net.role==='host'&&Net.room)Net.room.child('state').set(JSON.parse(JSON.stringify(M))).catch(werr);
     apply(M);
   };
+}
+function begin(host,mine){
+  stopHost();H=host;V.mine=new Set(mine);V.phase='';V.curId=0;V.kickId=0;V.noteId=0;V.resolved=0;V.logged=0;V.sel=[null,null];V.lock=[false,false];V.epoch=host.M.epoch||0;
+  $('log').innerHTML='';wire(host);
 }
 function startAI(){
   Aud.init();Net.role='local';Net.off=0;Net.uid='P0';saveCfg();
@@ -1498,23 +1665,80 @@ function startLocal(){
   h.M.players=[{id:'L0',name:cleanName(cfg.name,'PLAYER 1'),team:0,ready:true,ai:false,kit:clone(cfg.kit[0])},{id:'L1',name:cleanName(cfg.name2,'PLAYER 2'),team:1,ready:true,ai:false,kit:clone(cfg.kit[1])}];
   begin(h,['L0','L1']);closeOv('mo');h.begin();h.startToss();
 }
-function watchOffset(){fb.db.ref('.info/serverTimeOffset').on('value',s=>{Net.off=s.val()||0})}
+/* host side wiring for an online room: reads player actions, tracks presence, heartbeat */
+function attachHostIO(h){
+  const room=Net.room,seen=new Set();
+  const take=snap=>{
+    const m=snap.val();if(snap.key)room.child('actions/'+snap.key).remove().catch(()=>{});
+    if(!m||!m.id||seen.has(m.id))return;seen.add(m.id);
+    if(typeof m.uid==='string'&&Net.role==='host')h.act(m.uid,m);
+  };
+  room.child('actions').once('value').then(s=>{                       // drop anything left over from a previous host
+    const v=s.val()||{};Object.keys(v).forEach(k=>{if(v[k]&&v[k].id)seen.add(v[k].id);room.child('actions/'+k).remove().catch(()=>{})});
+    if(Net.role==='host'&&H===h)listen(room.child('actions'),'child_added',take);
+  }).catch(e=>{werr(e);if(Net.role==='host'&&H===h)listen(room.child('actions'),'child_added',take)});
+  listen(room.child('presence'),'value',s=>{if(H!==h)return;h.M.conn=s.val()||{};h.touch()});
+  Net.timers.push(setInterval(beat,HB_MS));beat();
+}
+/* player side: state, heartbeat watch, host-change watch */
+function attachCommon(){
+  const room=Net.room;
+  listen(room.child('hb'),'value',()=>{Net.hbSeen=Date.now()});
+  listen(room.child('hostId'),'value',s=>{const id=s.val();Net.hostId=id;if(id&&Net.role==='host'&&id!==Net.uid)demote()});
+  listen(room.child('state'),'value',s=>{
+    const d=s.val();
+    if(!d){if(Net.seenState)roomEnded();return}
+    Net.seenState=true;if(Net.role==='host')return;
+    if((d.epoch||0)<V.epoch)return;apply(d);
+  });
+  Net.timers.push(setInterval(watchdog,1000));
+  badge();wake();saveLast();
+}
+function watchdog(){
+  if(Net.role!=='player'||!Net.room||!Net.conn||!V.M||Net.taking||document.hidden)return;
+  const M=V.M,cand=M.players.filter(p=>!p.ai&&p.id!==M.hostId).map(p=>p.id).sort(),rank=cand.indexOf(Net.uid);
+  if(rank<0||!Net.hbSeen)return;
+  if(Date.now()-Net.hbSeen>TAKEOVER_MS+rank*4000){
+    Net.taking=true;
+    tryTakeover(M.hostId).catch(werr).then(()=>{Net.taking=false;Net.hbSeen=Date.now()});
+  }
+}
+async function tryTakeover(old){
+  const r=await Net.room.child('hostId').transaction(cur=>cur===old?Net.uid:undefined);
+  if(r.committed&&r.snapshot.val()===Net.uid)becomeHost(V.M);
+}
+function becomeHost(state){
+  const M0=JSON.parse(JSON.stringify(state));
+  stopHost();Net.role='host';Net.hostId=Net.uid;
+  // stopHost removed the common listeners; put them back (state is ignored while hosting)
+  const h=makeHost('online',M0.N,'pro',fixM(M0));H=h;V.mine=new Set([Net.uid]);wire(h);
+  attachCommon();attachHostIO(h);h.begin();h.adopt();
+  banner('YOU ARE NOW HOST','info',2400,'The previous host dropped out');
+}
+function demote(){
+  if(Net.role!=='host')return;
+  const M=H&&H.M;stopHost();Net.role='player';V.mine=new Set([Net.uid]);Net.hbSeen=Date.now();
+  attachCommon();banner('HOST CHANGED','info',2400,'Another player took over the room');
+  if(M)apply(M);
+}
 async function hostOnline(){
   try{
     Aud.init();saveCfg();await ensureAuth();
-    Net.role='host';Net.uid=fb.auth.currentUser.uid;watchOffset();
-    for(let a=0;a<8;a++){
+    Net.uid=fb.auth.currentUser.uid;await netReady();
+    for(let a=0;a<12;a++){
       const code=roomCode(),room=fb.db.ref(ROOT+'/'+code);
-      const claim=await room.transaction(cur=>cur===null?{hostId:Net.uid,createdAt:firebase.database.ServerValue.TIMESTAMP}:undefined);
-      if(!claim.committed)continue;
-      Net.code=code;Net.room=room;room.onDisconnect().remove();
+      const tx=await room.child('hostId').transaction(cur=>cur===null?Net.uid:undefined);
+      if(!tx.committed){
+        let c=null;try{c=(await room.child('createdAt').once('value')).val()}catch(e){}
+        if(c&&Net.now()-c>ROOM_TTL){try{await room.remove()}catch(e){}}      // abandoned room: free the code
+        continue;
+      }
+      await room.child('createdAt').set(TS());
+      Net.code=code;Net.room=room;Net.role='host';Net.seenState=false;
       const h=makeHost('online',cfg.kicks,'pro');h.M.hostId=Net.uid;h.M.room=code;
       h.M.players=[{id:Net.uid,name:cleanName(cfg.name,'HOST'),team:null,ready:true,ai:false,kit:clone(cfg.kit[0])}];
       begin(h,[Net.uid]);closeOv('mo');
-      const seen=new Set();
-      room.child('actions').on('child_added',s=>{const m=s.val();if(!m||!m.id||seen.has(m.id))return;seen.add(m.id);h.act(m.uid,m)});
-      room.child('presence').on('value',s=>{h.M.conn=s.val()||{};h.touch()});
-      markPresent();h.begin();return;
+      attachCommon();attachHostIO(h);markPresent();h.begin();return;
     }
     throw new Error('Could not reserve a room code. Please try again.');
   }catch(e){fail(e)}
@@ -1522,23 +1746,65 @@ async function hostOnline(){
 async function joinOnline(code){
   try{
     Aud.init();saveCfg();await ensureAuth();
-    Net.uid=fb.auth.currentUser.uid;watchOffset();
-    const room=fb.db.ref(ROOT+'/'+code),cur=(await room.once('value')).val();
-    if(!cur)throw new Error('No active room found with that code. Ask your friend to create a new room.');
-    const roster=(cur.state&&cur.state.players)||[],known=roster.some(p=>p.id===Net.uid);
-    if(!known&&cur.state&&cur.state.phase&&cur.state.phase!=='lobby')throw new Error('That match has already started.');
+    Net.uid=fb.auth.currentUser.uid;await netReady();
+    const room=fb.db.ref(ROOT+'/'+code);
+    const created=(await room.child('createdAt').once('value')).val(),st=(await room.child('state').once('value')).val();
+    if(!st){clearLast();throw new Error('No active room found with that code. Ask your friend to create a new room.')}
+    if(created&&Net.now()-created>ROOM_TTL){clearLast();throw new Error('That room has expired. Ask your friend to create a new one.')}
+    const roster=st.players||[],known=roster.some(p=>p.id===Net.uid);
+    if(!known&&st.phase&&st.phase!=='lobby')throw new Error('That match has already started.');
     if(!known&&roster.length>=4)throw new Error('That room is full.');
-    stopHost();Net.role='player';Net.code=code;Net.room=room;V.mine=new Set([Net.uid]);V.phase='';V.curId=0;V.kickId=0;V.noteId=0;V.resolved=0;V.logged=0;$('log').innerHTML='';
-    let saw=!!cur.state;
-    room.child('state').on('value',s=>{const d=s.val();if(d){saw=true;apply(d)}else if(saw)roomEnded()});
-    markPresent();closeOv('mo');
-    if(!known)send({t:'join',name:cfg.name,kit:cfg.kit[0]});
+    stopHost();Net.code=code;Net.room=room;Net.seenState=true;Net.hbSeen=Date.now();
+    V.mine=new Set([Net.uid]);V.phase='';V.curId=0;V.kickId=0;V.noteId=0;V.resolved=0;V.logged=0;V.epoch=0;$('log').innerHTML='';
+    const hid=(await room.child('hostId').once('value')).val();
+    closeOv('mo');
+    if(hid===Net.uid){                                    // this device was the host (page reloaded): carry on as host
+      V.M=fixM(st);Net.role='host';becomeHostFromReload(st);return;
+    }
+    Net.role='player';
+    attachCommon();markPresent();
+    if(!known)send({t:'join',name:cleanName(cfg.name,'PLAYER'),kit:cfg.kit[0]});
   }catch(e){fail(e)}
 }
-function roomEnded(){modal('Room ended','The host ended this room or disconnected.',[['Back to menu',home]])}
+function becomeHostFromReload(st){
+  const M0=JSON.parse(JSON.stringify(st));Net.role='host';
+  const h=makeHost('online',M0.N,'pro',fixM(M0));H=h;wire(h);
+  attachCommon();attachHostIO(h);markPresent();h.begin();h.adopt();
+}
+function leaveRoom(){
+  clearLast();
+  if(Net.role==='host'&&Net.room){Net.room.remove().then(home,home)}
+  else if(Net.room){send({t:'leave'});Net.room.child('presence/'+Net.uid).remove().catch(()=>{});setTimeout(home,350)}
+  else home();
+}
+function roomEnded(){clearLast();Net.listeners.forEach(l=>{try{l.ref.off(l.type,l.fn)}catch(e){}});modal('Room ended','The host ended this room or it has expired.',[['Back to menu',home]])}
 function fail(e){
-  const msg=typeof e==='string'?e:(e&&e.message?e.message:'Could not connect to the game room.');
-  modal('Online room problem',esc(msg),[['Back to menu',home]]);
+  modal('Online room problem',esc(friendly(e)),[['Back to menu',home]]);
+}
+/* one-click health check: runs the same Firebase calls the game uses, then cleans up after itself */
+async function netTest(){
+  const rows=[];let done=false;
+  const show=()=>{modal('Connection test',`<ul class="chk">${rows.map(r=>`<li class="${r[0]?'ok':'bad'}"><b>${r[0]?'✓':'✗'}</b> ${esc(r[1])}${r[2]?`<small>${esc(r[2])}</small>`:''}</li>`).join('')}${done?'':'<li class="run">Running…</li>'}</ul>`+(done?`<p class="note">${rows.every(r=>r[0])?'All good. Online rooms are ready to use.':'Fix the first ✗ above, then run the test again.'}</p>`:''),[['Back',menu,1]])};
+  const step=async(name,fn)=>{try{await fn();rows.push([true,name]);show();return true}catch(e){rows.push([false,name,friendly(e)]);show();return false}};
+  show();
+  let room=null,code='ZZ'+roomCode().slice(2);
+  const ok=await step('Firebase loaded',async()=>{if(!fb)throw new Error('The Firebase scripts did not load. Check your internet connection or ad-blocker.')})&&
+   await step('Signed in anonymously',async()=>{await ensureAuth();Net.uid=fb.auth.currentUser.uid})&&
+   await step('Server clock available',async()=>{await netReady()})&&
+   await step('Created a test room',async()=>{room=fb.db.ref(ROOT+'/'+code);const tx=await room.child('hostId').transaction(c=>c===null?Net.uid:undefined);if(!tx.committed)throw new Error('Could not claim a room code, try again.');await room.child('createdAt').set(TS())})&&
+   await step('Wrote room state and heartbeat',async()=>{await room.child('state').set({phase:'lobby',players:[],probe:1});await room.child('hb').set(TS())})&&
+   await step('Read the state back',async()=>{const v=(await room.child('state').once('value')).val();if(!v||v.probe!==1)throw new Error('State did not read back correctly.')})&&
+   await step('Sent and received a player action',async()=>{
+     await new Promise((res,rej)=>{
+       const ref=room.child('actions'),to=setTimeout(()=>{ref.off('child_added',fn);rej(new Error('No action arrived within 6 seconds.'))},6000);
+       const fn=snap=>{const m=snap.val();if(m&&m.id==='probe'){clearTimeout(to);ref.off('child_added',fn);room.child('actions/'+snap.key).remove().then(res,res)}};
+       ref.on('child_added',fn,e=>{clearTimeout(to);rej(e)});
+       room.child('actions').push().set({id:'probe',uid:Net.uid,t:'probe'}).catch(e=>{clearTimeout(to);rej(e)});
+     });
+   })&&
+   await step('Presence works',async()=>{const p=room.child('presence/'+Net.uid);await p.onDisconnect().remove();await p.set(true);await p.remove()});
+  if(room){try{await room.remove()}catch(e){rows.push([false,'Clean up the test room',friendly(e)])}}
+  done=true;show();
 }
 
 /* ============================================================
@@ -1565,12 +1831,17 @@ function modal(title,body,btns){
 }
 const hero='<div class="menu-hero"><span class="mh l">⚽</span><span class="mh r">🧤</span></div><div class="menu-tag">Aim. Dive. Score. Six zones, seven seconds.</div>';
 function menu(){
-  const live=H&&V.M&&V.M.phase!=='end'&&V.M.phase!=='lobby';
+  const inRoom=!!Net.room,live=inRoom||(H&&V.M&&V.M.phase!=='end'&&V.M.phase!=='lobby');
+  const last=!inRoom&&fb&&lastRoom();
   const btns=[
     ['🤖  Play vs AI|Warm up solo against the computer',setupAI],
     ['🎮  Local 1v1|Two players, one screen',setupLocal],
     ['🌐  Create an online room|Host a 1v1 or 2v2 for your friends',setupHost],
     ['🔗  Join with a room code|Got a code? Jump straight in',joinUI]];
+  if(last)btns.unshift([`↻  Rejoin room ${last}|Pick up your last online match`,()=>{cfg.name=cfg.name;joinOnline(last)}]);
+  if(!inRoom)btns.push(['🩺  Test online connection|Checks Firebase, sign-in and database rules']);
+  if(!inRoom)btns[btns.length-1].splice(1,0,netTest);
+  if(inRoom)btns.push(['🚪  '+(Net.role==='host'?'End room':'Leave room')+'|'+(Net.role==='host'?'Closes the room for everyone':'Go back to the main menu'),leaveRoom,1]);
   if(live)btns.unshift(['▶  Resume match|Back to the pitch',()=>closeOv('mo')]);
   modal('PENALTY <em>SHOOTOUT</em>',hero,btns);
   $('mo').classList.add('menu');
@@ -1677,6 +1948,8 @@ function bind(){
     if(overlayDepth){if(e.key==='Escape'){['kitOv','rulesOv'].forEach(id=>{if($(id).classList.contains('show'))closeOv(id)})}return}
     if(!M)return;
     if(M.phase==='anim'&&(e.key===' '||e.key==='Enter')){e.preventDefault();Sim.fast(true);return}
+    if(M.phase==='kick'&&canPick(M,0)){const oi='QWE'.indexOf(e.key.toUpperCase()),ci='ZXC'.indexOf(e.key.toUpperCase());
+      if(e.key.length===1&&oi>=0){setOpt('pw',oi);return}if(e.key.length===1&&ci>=0){setOpt('cv',ci);return}}
     let team=-1,idx=-1,m;
     if(m=e.code.match(/^Digit([1-6])$/)){team=0;idx=+m[1]-1}
     else if(m=e.code.match(/^Numpad([1-6])$/)){team=localKind()?1:0;idx=+m[1]-1}
