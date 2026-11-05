@@ -275,6 +275,20 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--yellow);outline
 #stMsg{min-height:2.6em}
 @media (max-width:640px){.cards.ball{grid-template-columns:repeat(2,1fr)}.chips{gap:6px}}
 
+/* power meter */
+.gpm{display:flex;gap:10px;align-items:stretch}.gpm .gp{flex:1;min-width:0}
+.pmeter{width:62px;flex:none;display:flex;flex-direction:column;align-items:center;gap:6px;padding:8px 4px;background:#0a1030;border:3px solid var(--line);border-bottom-width:5px;border-radius:12px;cursor:pointer;touch-action:manipulation}
+.pmeter:disabled{opacity:.45;cursor:default}.pmeter.run{border-color:var(--yellow);animation:pmpulse .7s steps(2) infinite}
+@keyframes pmpulse{50%{box-shadow:0 0 14px rgba(255,210,63,.6)}}
+.pm-t{font:400 7px var(--px);color:var(--muted)}
+.pm-bar{position:relative;flex:1;width:30px;min-height:120px;border-radius:9px;overflow:hidden;border:3px solid #000;background:linear-gradient(to top,#ff3d4f 0 34%,#ffd23f 34% 67%,#39ff9c 67% 100%)}
+.pm-ind{position:absolute;left:-3px;right:-3px;bottom:0;height:8px;background:#fff;border:2px solid #000;border-radius:3px;box-shadow:0 0 8px rgba(255,255,255,.9)}
+.pmeter.stopped .pm-ind{background:#ffe94a}
+.pm-r{font:400 8px var(--px);color:var(--yellow);min-height:1.1em}
+.pm-r[data-b="0"]{color:#ff6a78}.pm-r[data-b="1"]{color:#ffd23f}.pm-r[data-b="2"]{color:#39ff9c}
+.pm-hint{font:600 11px var(--ui);color:var(--muted);line-height:1.3;min-height:2.6em;margin-bottom:2px}
+@media (max-width:640px){.pmeter{width:54px}.pm-bar{min-height:96px;width:26px}}
+
 </style>
 </head>
 <body>
@@ -354,11 +368,11 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--yellow);outline
   <p><b>Coin toss:</b> both sides play rock-paper-scissors. The winner chooses to shoot or keep first.</p>
   <p><b>Shooter</b> picks a zone to aim at and <b>keeper</b> picks a zone to dive to. You have <b>7 seconds</b>; if time runs out your highlighted zone (or a random one) is used. Picks stay hidden until both are in.</p>
   <p><b>Same zone</b> = SAVED. <b>Different zone</b> = GOAL.</p>
-  <p><b>Power:</b> SOFT is slow and never misses, but a keeper diving to a neighbouring zone can sometimes reach it. HARD is fast but can sail wide or hit the woodwork, and sometimes blasts through a correct dive.</p>
+  <p><b>Power meter:</b> a bar sweeps from red up to green and back. Tap it (or press Space) to stop it. <b>Green</b> is a perfect strike: fast, accurate, and it can blast through a correct dive. <b>Yellow</b> is a good, safe strike. <b>Red</b> is a weak, wayward shot that a keeper next door can reach. The bar gets faster with every kick, and if you lock in before tapping it, it stops where it is.</p>
   <p><b>Curve:</b> bends the ball in flight. It looks great but carries a small miss risk, and a curler can swerve away from a correct dive. Top-row shots miss a bit more often.</p>
   <p>Each side takes the chosen number of kicks, alternating. Most goals wins and the match ends early once one side can't be caught. A tie goes to <b>sudden death</b>.</p>
   <p><b>Online:</b> create a room, share the code, and friends pick a side. Up to two per side for 2v2; shooters and keepers rotate within a team.</p>
-  <p><b>Keys:</b> 1–6 pick a zone · Q W E power · Z X C curve · arrows move · Enter locks · Space speeds up a kick.</p>
+  <p><b>Keys:</b> 1–6 pick a zone · Space stops the power bar · Z X C curve · arrows move · Enter locks · Space speeds up a kick.</p>
  </div>
  <button class="go" id="rulesClose">GOT IT</button>
 </div></div>
@@ -864,7 +878,7 @@ const PWT=[[.60,.68],[.46,.54],[.40,.44]];
 const adjacent=(a,b)=>Math.abs(((a/3)|0)-((b/3)|0))+Math.abs(a%3-b%3)===1;
 function decide(shot,keep,power,curve){
   const top=shot<3,c=shot%3;
-  const pm=[0,.05,.2][power]+(top?.08:0)+(curve?.05:0);
+  const pm=[.15,.06,.05][power]+(top?.08:0)+(curve?.05:0);
   if(Math.random()<pm){
     let kind;
     if(top)kind=Math.random()<.45?'over':(c===1?'bar':'post');
@@ -878,9 +892,9 @@ function decide(shot,keep,power,curve){
   if(power===0&&adjacent(shot,keep)&&Math.random()<.4)return{out:'saved',kind:'reach'};
   return{out:'goal',kind:'clean'};
 }
-function makePlan(shot,keep,power,curve){
+function makePlan(shot,keep,power,curve,pv){
   power=power==null?1:power;curve=curve||0;
-  const d=decide(shot,keep,power,curve),pw=PWT[power],T=rnd(pw[0],pw[1]),rs=zoneRect(shot),rk=zoneRect(keep);
+  const d=decide(shot,keep,power,curve),pw=PWT[power],T=(typeof pv==='number'&&pv>=0&&pv<=1)?clamp(.68-.28*pv+rnd(-.015,.015),.39,.7):rnd(pw[0],pw[1]),rs=zoneRect(shot),rk=zoneRect(keep);
   const r3=v=>+v.toFixed(3);let tb,H,col=keep%3;
   if(d.out==='miss'){
     const c=shot%3,side=c===0?-1:(c===2?1:(Math.random()<.5?-1:1));
@@ -1101,7 +1115,7 @@ const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;'
 const PICK_MS=7000,GRACE=800,NZONE=6;
 const TC=['#4aa3ff','#ff8a3d'];
 const ZN=['TOP LEFT','TOP MIDDLE','TOP RIGHT','LOW LEFT','LOW MIDDLE','LOW RIGHT'];
-const PWN=['SOFT','MEDIUM','HARD'],CVN=['STRAIGHT','CURL LEFT','CURL RIGHT'];
+const PWN=['WEAK','GOOD','PERFECT'],CVN=['STRAIGHT','CURL LEFT','CURL RIGHT'];
 const RPS=[{n:'ROCK',e:'✊'},{n:'PAPER',e:'✋'},{n:'SCISSORS',e:'✌️'}];
 const rint=n=>Math.floor(Math.random()*n);
 
@@ -1247,8 +1261,8 @@ function makeHost(kind,N,diff,resume){
     return Math.random()<.6?argmax(p):sample(p);
   }
   function aiOpt(){
-    const d=M.diff,w=d==='rookie'?[.3,.6,.1]:(d==='pro'?[.25,.5,.25]:[.3,.4,.3]);
-    return{pw:sample(w),cv:Math.random()<.35?1+rint(2):0};
+    const d=M.diff,w=d==='rookie'?[.4,.45,.15]:(d==='pro'?[.2,.45,.35]:[.1,.35,.55]);
+    const pw=sample(w);return{pw,pv:pw===0?Math.random()*.33:(pw===1?.34+Math.random()*.32:.67+Math.random()*.33),cv:Math.random()<.35?1+rint(2):0};
   }
   function aiShot(){
     const q=predict(P.hist.keeps),d=M.diff,last=P.hist.aiShots[P.hist.aiShots.length-1];
@@ -1297,13 +1311,16 @@ function makeHost(kind,N,diff,resume){
     const n=M.n,ts=M.first^(n&1),kt=1-ts,k=n>>1,tp=teamPl(ts),kp=teamPl(kt),sp=tp[k%tp.length],kpl=kp[k%kp.length];
     M.cur={id:++P.curSeq,n,ts,kt,k,sid:sp.id,kid:kpl.id,deadline:snow()+PICK_MS,locked:[false,false]};
     P.pick=[null,null];M.phase='kick';
-    P.opt={pw:1,cv:0};
-    [[0,sp],[1,kpl]].forEach(([i,pl])=>{if(pl.ai)later(900+rint(1500),()=>{if(i===0){const o=aiOpt();submitPick(0,aiShot(),o.pw,o.cv)}else submitPick(1,aiKeep())})});
+    P.opt={pw:1,cv:0,pv:null};
+    [[0,sp],[1,kpl]].forEach(([i,pl])=>{if(pl.ai)later(900+rint(1500),()=>{if(i===0){const o=aiOpt();submitPick(0,aiShot(),o.pw,o.cv,o.pv)}else submitPick(1,aiKeep())})});
     pub();
   }
-  function submitPick(i,z,pw,cv){
+  function submitPick(i,z,pw,cv,pv){
     if(M.phase!=='kick'||!M.cur||P.pick[i]!=null||!Number.isInteger(z)||z<0||z>=NZONE)return;
-    if(i===0)P.opt={pw:(pw===0||pw===1||pw===2)?pw:1,cv:(cv===0||cv===1||cv===2)?cv:0};
+    if(i===0){
+      const okv=typeof pv==='number'&&pv>=0&&pv<=1;
+      P.opt={pw:okv?(pv<.34?0:(pv<.67?1:2)):((pw===0||pw===1||pw===2)?pw:1),cv:(cv===0||cv===1||cv===2)?cv:0,pv:okv?pv:null};
+    }
     P.pick[i]=z;M.cur.locked[i]=true;
     const pl=byId(i===0?M.cur.sid:M.cur.kid);
     if(pl&&!pl.ai){(i===0?P.hist.shots:P.hist.keeps).push(z)}
@@ -1313,7 +1330,7 @@ function makeHost(kind,N,diff,resume){
   function resolveKick(){
     if(M.forfeit||M.phase!=='kick')return;
     const c=M.cur;for(let i=0;i<2;i++)if(P.pick[i]==null)P.pick[i]=rint(NZONE);
-    const[shot,keep]=P.pick,plan=E.makePlan(shot,keep,P.opt.pw,P.opt.cv),id=++P.kickSeq;
+    const[shot,keep]=P.pick,plan=E.makePlan(shot,keep,P.opt.pw,P.opt.cv,P.opt.pv),id=++P.kickSeq;
     M.kick={id,n:c.n,ts:c.ts,kt:c.kt,sid:c.sid,kid:c.kid,shot,keep,T:plan.T,tb:plan.tb,H:plan.H,out:plan.out,kind:plan.kind,power:plan.power,curve:plan.curve,ax:plan.ax,col:plan.col,saved:plan.out==='saved',committed:false};
     M.phase='anim';pub();
     later(9000,()=>animDone(id));          // safety net if no view reports completion
@@ -1367,7 +1384,7 @@ function makeHost(kind,N,diff,resume){
       case 'choose':
         if(M.phase==='choose'&&p&&teamPl(M.toss.winner)[0]===p)chooseSide(m.c);break;
       case 'pick':
-        if(M.phase==='kick'&&M.cur&&(m.cid==null||m.cid===M.cur.id)){if(pid===M.cur.sid)submitPick(0,m.zone,m.pw,m.cv);else if(pid===M.cur.kid)submitPick(1,m.zone)}break;
+        if(M.phase==='kick'&&M.cur&&(m.cid==null||m.cid===M.cur.id)){if(pid===M.cur.sid)submitPick(0,m.zone,m.pw,m.cv,m.pv);else if(pid===M.cur.kid)submitPick(1,m.zone)}break;
       case 'again':
         if(pid===M.hostId&&M.phase==='end')startToss();break;
     }
@@ -1438,7 +1455,7 @@ function makeHost(kind,N,diff,resume){
 /* ============================================================
    VIEW: renders any snapshot, same code for host, local and remote
    ============================================================ */
-const V={statKey:'',epoch:0,opt:{pw:1,cv:0},M:null,mine:new Set(),sel:[null,null],lock:[false,false],curId:0,kickId:0,noteId:0,resolved:0,logged:0,phase:'',autoSent:false,
+const V={meter:null,statKey:'',epoch:0,opt:{pw:1,cv:0},M:null,mine:new Set(),sel:[null,null],lock:[false,false],curId:0,kickId:0,noteId:0,resolved:0,logged:0,phase:'',autoSent:false,
   lobbySig:'',tossKey:'',endShown:0,lastSec:-1,posts:[null,null]};
 function fixM(M){
   M.players=M.players||[];M.conn=M.conn||{};
@@ -1475,7 +1492,7 @@ function apply(raw){
   if(ph==='lobby')renderLobby(M);
   if(ph==='toss'||ph==='choose')renderToss(M);
   if(ph==='kick'&&M.cur&&M.cur.id!==V.curId){
-    V.curId=M.cur.id;Sim.ready(kitsFor(M,M.cur));V.sel=[null,null];V.lock=[false,false];V.autoSent=false;V.opt={pw:1,cv:0};Aud.tick();
+    V.curId=M.cur.id;Sim.ready(kitsFor(M,M.cur));V.sel=[null,null];V.lock=[false,false];V.autoSent=false;V.opt={pw:1,cv:0};meterReset(M);Aud.tick();
   }
   if(ph==='anim'&&M.kick&&M.kick.id!==V.kickId){
     V.kickId=M.kick.id;
@@ -1590,8 +1607,8 @@ function buildPosts(){
     const el=document.createElement('section');el.className='post';el.dataset.role=role;el.hidden=true;
     el.innerHTML=`<div class="pk-head"><span class="pk-ico">${role?'🧤':'⚽'}</span><div><b>${role?'KEEPER · SAVE ZONES':'SHOOTER · SHOOT ZONES'}</b><small class="pw"></small></div><span class="pk-st"></span></div>
       <div class="pk-msg"></div>
-      <div class="gp"><div class="gp-net"></div><div class="gp-grid"></div><div class="gp-turf"></div></div>
-      ${role===0?`<div class="shotopts"><div class="so1"><label>POWER</label><div class="seg" data-opt="pw"><button data-v="0">SOFT</button><button data-v="1">MEDIUM</button><button data-v="2">HARD</button></div><small data-hint="pw"></small></div><div class="so1"><label>CURVE</label><div class="seg" data-opt="cv"><button data-v="0">STRAIGHT</button><button data-v="1">↰ LEFT</button><button data-v="2">RIGHT ↱</button></div><small data-hint="cv"></small></div></div>`:''}
+      <div class="gpm"><div class="gp"><div class="gp-net"></div><div class="gp-grid"></div><div class="gp-turf"></div></div>${role===0?`<button class="pmeter" type="button" aria-label="Power meter: tap to stop"><span class="pm-t">POWER</span><span class="pm-bar"><i class="pm-ind"></i></span><span class="pm-r">TAP!</span></button>`:''}</div>
+      ${role===0?`<div class="shotopts"><small class="pm-hint" data-hint="pw"></small><div class="so1"><label>CURVE</label><div class="seg" data-opt="cv"><button data-v="0">STRAIGHT</button><button data-v="1">↰ LEFT</button><button data-v="2">RIGHT ↱</button></div><small data-hint="cv"></small></div></div>`:''}
       <div class="pk-foot"><button class="go lockb" disabled>${role?'LOCK DIVE':'LOCK SHOT'}</button><span class="pk-hint"></span></div>`;
     const grid=el.querySelector('.gp-grid'),cells=[];
     for(let z=0;z<NZONE;z++){
@@ -1600,11 +1617,40 @@ function buildPosts(){
     }
     el.querySelector('.lockb').addEventListener('click',()=>{if(V.sel[role]!=null)submitPick(role,V.sel[role])});
     el.querySelectorAll('[data-opt]').forEach(g=>g.addEventListener('click',e=>{const b=e.target.closest('button');if(!b||g.classList.contains('dis'))return;setOpt(g.dataset.opt,+b.dataset.v)}));
+    const pm=el.querySelector('.pmeter');if(pm)pm.addEventListener('click',()=>meterStop());
     host.appendChild(el);
     V.posts[role]={el,cells,who:el.querySelector('.pw'),msg:el.querySelector('.pk-msg'),st:el.querySelector('.pk-st'),lockb:el.querySelector('.lockb'),hint:el.querySelector('.pk-hint')};
   });
 }
-const HINT_PW=['Slow and safe. Can’t miss, but a keeper next door can still reach it.','Balanced.','Fast but risky: may sail wide, and can blast through a correct dive.'];
+const BAND=v=>v<.34?0:(v<.67?1:2);
+const BAND_TXT=['WEAK','GOOD','PERFECT'],BAND_HINT=['Weak strike: slow and wayward. A keeper next door can reach it.','Good strike: solid and fairly accurate.','Perfect strike! Fast, accurate and can blast through a correct dive.'];
+/* power meter: a bar that sweeps red → yellow → green and back. Tap it to stop it. Faster with every kick. */
+function meterReset(M){
+  const mine=M.cur&&M.phase==='kick'&&(()=>{const pl=roleOf(M,0);return pl&&!pl.ai&&isMine(pl.id)})();
+  if(!mine){V.meter=null;return}
+  const k=M.cur.k||0,sweep=Math.max(.42,1.15*Math.pow(.88,k));
+  V.meter={run:true,t0:performance.now()-Math.random()*sweep*2000,sweep,w:Math.min(.1,.025*k),val:null};
+}
+function meterVal(){
+  const m=V.meter;if(!m)return .5;if(!m.run)return m.val;
+  const x=(performance.now()-m.t0)/1000/m.sweep,x2=x+m.w*Math.sin(x*Math.PI*2.7),ph=((x2%2)+2)%2;
+  return ph<1?ph:2-ph;
+}
+function meterStop(){
+  const m=V.meter,M=V.M;if(!m||!m.run||!M||!canPick(M,0))return;
+  m.val=meterVal();m.run=false;Aud.init();Aud.lock();renderPosts(M);
+}
+function meterDraw(){
+  const m=V.meter,p=V.posts[0];
+  if(m&&p&&!p.el.hidden){
+    const v=meterVal(),ind=p.el.querySelector('.pm-ind');
+    if(ind)ind.style.bottom=`calc(${(v*100).toFixed(1)}% - ${(v*8).toFixed(1)}px)`;
+    const r=p.el.querySelector('.pm-r'),b=BAND(v);
+    if(r&&!m.run){r.textContent=BAND_TXT[b];r.dataset.b=b}
+  }
+  requestAnimationFrame(meterDraw);
+}
+requestAnimationFrame(meterDraw);
 const HINT_CV=['Straight shot.','Bends left. Slightly riskier, can curl away from a correct dive.','Bends right. Slightly riskier, can curl away from a correct dive.'];
 function setOpt(k,v){V.opt[k]=v;Aud.tick();if(V.M)renderPosts(V.M)}
 function roleOf(M,role){return role===0?plr(M,M.cur&&M.cur.sid):plr(M,M.cur&&M.cur.kid)}
@@ -1622,7 +1668,9 @@ function submitPick(role,z){
   const M=V.M;if(!M||!M.cur||V.lock[role]&&localKind())return;
   const pl=roleOf(M,role);if(!pl)return;
   V.lock[role]=true;Aud.init();Aud.lock();
-  act(pl.id,role===0?{t:'pick',zone:z,pw:V.opt.pw,cv:V.opt.cv,cid:M.cur.id}:{t:'pick',zone:z,cid:M.cur.id});renderPosts(M);renderPrompt(M);
+  let pv=null;
+  if(role===0){const m=V.meter;if(m){if(m.run){m.val=meterVal();m.run=false}pv=+m.val.toFixed(3)}}
+  act(pl.id,role===0?{t:'pick',zone:z,pw:pv==null?1:BAND(pv),pv,cv:V.opt.cv,cid:M.cur.id}:{t:'pick',zone:z,cid:M.cur.id});renderPosts(M);renderPrompt(M);
 }
 function renderPosts(M){
   const inK=M.phase==='kick'||M.phase==='anim',c=M.cur;
@@ -1646,7 +1694,11 @@ function renderPosts(M){
     p.el.classList.toggle('hidegrid',!active);
     p.hint.innerHTML=localKind()?'':'Keys <b>1–6</b> · <b>Enter</b> locks';
     if(role===0){p.el.querySelectorAll('[data-opt]').forEach(g=>{g.classList.toggle('dis',!active);g.querySelectorAll('button').forEach(b=>b.classList.toggle('on',+b.dataset.v===V.opt[g.dataset.opt]))});
-      p.el.querySelector('[data-hint=pw]').textContent=HINT_PW[V.opt.pw];p.el.querySelector('[data-hint=cv]').textContent=HINT_CV[V.opt.cv]}
+      const m=V.meter,pm=p.el.querySelector('.pmeter'),r=p.el.querySelector('.pm-r');
+      pm.classList.toggle('run',!!(m&&m.run&&active));pm.classList.toggle('stopped',!!(m&&!m.run));pm.disabled=!active;
+      if(m&&m.run)r.textContent='TAP!',delete r.dataset.b;
+      p.el.querySelector('[data-hint=pw]').textContent=m&&!m.run?BAND_HINT[BAND(m.val)]:'Tap the power bar to stop it. Green is a power shot. It speeds up every kick!';
+      p.el.querySelector('[data-hint=cv]').textContent=HINT_CV[V.opt.cv]}
     p.st.textContent=locked?'✓':'';
   });
   // waiting card for spectators / non-kick phases
@@ -2053,8 +2105,9 @@ function bind(){
     if(overlayDepth){if(e.key==='Escape'){['kitOv','rulesOv'].forEach(id=>{if($(id).classList.contains('show'))closeOv(id)})}return}
     if(!M)return;
     if(M.phase==='anim'&&(e.key===' '||e.key==='Enter')){e.preventDefault();Sim.fast(true);return}
-    if(M.phase==='kick'&&canPick(M,0)){const oi='QWE'.indexOf(e.key.toUpperCase()),ci='ZXC'.indexOf(e.key.toUpperCase());
-      if(e.key.length===1&&oi>=0){setOpt('pw',oi);return}if(e.key.length===1&&ci>=0){setOpt('cv',ci);return}}
+    if(M.phase==='kick'&&canPick(M,0)){const ci='ZXC'.indexOf(e.key.toUpperCase());
+      if(e.key.length===1&&ci>=0){setOpt('cv',ci);return}
+      if((e.key===' '||e.key.toUpperCase()==='W')&&V.meter&&V.meter.run){e.preventDefault();meterStop();return}}
     let team=-1,idx=-1,m;
     if(m=e.code.match(/^Digit([1-6])$/)){team=0;idx=+m[1]-1}
     else if(m=e.code.match(/^Numpad([1-6])$/)){team=localKind()?1:0;idx=+m[1]-1}
